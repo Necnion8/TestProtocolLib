@@ -18,16 +18,12 @@ public class PreviewListener extends PacketAdapter {
 
     @Override
     public void onPacketSending(PacketEvent event) {
-        if (event.getPacketType().name().contains("ENTITY")) {
-            log.info("[->] " + event.getPacketType().name());
-        }
+        log.info("[->] " + event.getPacketType().name());
     }
 
     @Override
     public void onPacketReceiving(PacketEvent event) {
-        if (event.getPacketType().name().contains("ENTITY")) {
-            log.info("[<-] " + event.getPacketType().name());
-        }
+        log.info("[<-] " + event.getPacketType().name());
     }
 
 }

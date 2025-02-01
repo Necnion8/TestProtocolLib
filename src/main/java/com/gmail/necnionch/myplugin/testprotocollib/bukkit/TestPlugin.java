@@ -13,7 +13,7 @@ import java.util.stream.StreamSupport;
 
 public final class TestPlugin extends JavaPlugin {
 
-    private PacketType[] getPreviewPacketTypes() {
+    private static PacketType[] getPreviewPacketTypes() {
         List<PacketType> ignores = Arrays.asList(
                 PacketType.Play.Server.ENTITY,
                 PacketType.Play.Server.SPAWN_ENTITY_LIVING,

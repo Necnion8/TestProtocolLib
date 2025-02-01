@@ -127,7 +127,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
         } else if (PacketType.Play.Server.ENTITY_DESTROY.equals(event.getPacketType())) {
             List<Integer> entityIds = packet.getIntLists().read(0);
             // エンティティが削除される時、置換したエンティティのIDをリストからも削除する
-            replacedEntityUniqueIds.keySet().removeAll(entityIds);
+            entityIds.forEach(replacedEntityUniqueIds.keySet()::remove);
 
         }
     }
