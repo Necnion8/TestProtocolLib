@@ -5,10 +5,8 @@ import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
-import com.comphenix.protocol.wrappers.EnumWrappers;
-import com.comphenix.protocol.wrappers.Pair;
-import com.comphenix.protocol.wrappers.WrappedDataValue;
-import com.comphenix.protocol.wrappers.WrappedDataWatcher;
+import com.comphenix.protocol.wrappers.*;
+import com.gmail.necnionch.myplugin.testprotocollib.bukkit.MyUtil;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.bukkit.entity.EntityType;
@@ -43,14 +41,14 @@ public class ReplaceItemEntityListener extends PacketAdapter {
         getPlugin().getServer().getScheduler().runTask(getPlugin(), task);
     }
 
-    private void sendServerPacket(Player player, PacketContainer packet) {
+    public void sendServerPacket(Player player, PacketContainer packet) {
         ignorePacketHandles.add(packet.getHandle());  // 送信する ENTITY_METADATA を処理しないように無視マークする
         log.warning("SEND PACKET : " + packet.getType().name());
         manager.sendServerPacket(player, packet);
     }
 
 
-    private void sendEntityMetadata(Player player, int entityId, List<WrappedDataValue> dataValues) {
+    public void sendEntityMetadata(Player player, int entityId, List<WrappedDataValue> dataValues) {
         try {
             PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_METADATA);
             newPacket.getIntegers().write(0, entityId);
@@ -62,7 +60,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
         }
     }
 
-    private void sendEntityEquipment(Player player, int entityId, List<Pair<EnumWrappers.ItemSlot, ItemStack>> items) {
+    public void sendEntityEquipment(Player player, int entityId, List<Pair<EnumWrappers.ItemSlot, ItemStack>> items) {
         try {
             PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_EQUIPMENT);
             newPacket.getIntegers().write(0, entityId);
@@ -103,7 +101,8 @@ public class ReplaceItemEntityListener extends PacketAdapter {
                 // SPAWN_ENTITY を送信した後に、防具立てのデータを設定する
                 runTask(() -> sendEntityMetadata(event.getPlayer(), entityId, Arrays.asList(
                         new WrappedDataValue(0, WrappedDataWatcher.Registry.get(Byte.class), (byte) 0x20),  // 0x20 = invisible; https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Entity
-                        new WrappedDataValue(5, WrappedDataWatcher.Registry.get(Boolean.class), true)  // true = no gravity
+                        new WrappedDataValue(5, WrappedDataWatcher.Registry.get(Boolean.class), true),  // true = no gravity
+                        MyUtil.vec3FtoWrappedDataValue(19, new Vector3F(-90, 0, 0))  // right arm
                 )));
             }
 
@@ -144,6 +143,5 @@ public class ReplaceItemEntityListener extends PacketAdapter {
 
         }
     }
-    
-    
+
 }
