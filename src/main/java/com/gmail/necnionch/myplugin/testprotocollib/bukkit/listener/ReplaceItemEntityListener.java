@@ -9,17 +9,14 @@ import com.comphenix.protocol.wrappers.EnumWrappers;
 import com.comphenix.protocol.wrappers.Pair;
 import com.comphenix.protocol.wrappers.WrappedDataValue;
 import com.comphenix.protocol.wrappers.WrappedDataWatcher;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.logging.Logger;
 
 public class ReplaceItemEntityListener extends PacketAdapter {
@@ -42,13 +39,49 @@ public class ReplaceItemEntityListener extends PacketAdapter {
         this.manager = manager;
     }
 
+    private void runTask(Runnable task) {
+        getPlugin().getServer().getScheduler().runTask(getPlugin(), task);
+    }
+
+    private void sendServerPacket(Player player, PacketContainer packet) {
+        ignorePacketHandles.add(packet.getHandle());  // 送信する ENTITY_METADATA を処理しないように無視マークする
+        log.warning("SEND PACKET : " + packet.getType().name());
+        manager.sendServerPacket(player, packet);
+    }
+
+
+    private void sendEntityMetadata(Player player, int entityId, List<WrappedDataValue> dataValues) {
+        try {
+            PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_METADATA);
+            newPacket.getIntegers().write(0, entityId);
+            newPacket.getDataValueCollectionModifier().write(0, dataValues);
+            sendServerPacket(player, newPacket);
+
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void sendEntityEquipment(Player player, int entityId, List<Pair<EnumWrappers.ItemSlot, ItemStack>> items) {
+        try {
+            PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_EQUIPMENT);
+            newPacket.getIntegers().write(0, entityId);
+            newPacket.getSlotStackPairLists().write(0, items);
+            sendServerPacket(player, newPacket);
+
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
+
     @Override
     public void onPacketSending(PacketEvent event) {
         PacketContainer packet = event.getPacket();
 
         // 無視マークされたパケット
         if (ignorePacketHandles.remove(packet.getHandle())) {
-            log.severe("IGNORED " + event.getPacketType().name() + " : " + packet);
+            log.severe("IGNORED PACKET : " + event.getPacketType().name());
             return;
         }
 
@@ -68,22 +101,10 @@ public class ReplaceItemEntityListener extends PacketAdapter {
                 packet.getEntityTypeModifier().write(0, EntityType.ARMOR_STAND);
 
                 // SPAWN_ENTITY を送信した後に、防具立てのデータを設定する
-                getPlugin().getServer().getScheduler().runTask(getPlugin(), () -> {
-                    try {
-                        PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_METADATA);
-                        newPacket.getIntegers().write(0, entityId);
-
-                        List<WrappedDataValue> dataValues = Lists.newArrayList();
-                        dataValues.add(new WrappedDataValue(0, WrappedDataWatcher.Registry.get(Byte.class), (byte) 0x20));  // 0x20 = invisible; https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Entity
-                        newPacket.getDataValueCollectionModifier().write(0, dataValues);
-
-                        ignorePacketHandles.add(newPacket.getHandle());  // 送信する ENTITY_METADATA を処理しないように無視マークする
-                        log.warning("SEND ENTITY METADATA");
-                        manager.sendServerPacket(event.getPlayer(), newPacket);
-                    } catch (Throwable e) {
-                        e.printStackTrace();
-                    }
-                });
+                runTask(() -> sendEntityMetadata(event.getPlayer(), entityId, Arrays.asList(
+                        new WrappedDataValue(0, WrappedDataWatcher.Registry.get(Byte.class), (byte) 0x20),  // 0x20 = invisible; https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Entity
+                        new WrappedDataValue(5, WrappedDataWatcher.Registry.get(Boolean.class), true)  // true = no gravity
+                )));
             }
 
         } else if (PacketType.Play.Server.ENTITY_METADATA.equals(event.getPacketType())) {
@@ -108,19 +129,11 @@ public class ReplaceItemEntityListener extends PacketAdapter {
 
                 // Itemエンティティに設定されようとしているItemStackがあるなら
                 if (itemStack != null) {
-                    // ArmorStandのスロットにItemStackを装備させる
-                    try {
-                        PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_EQUIPMENT);
-                        newPacket.getIntegers().write(0, entityId);
-                        List<Pair<EnumWrappers.ItemSlot, ItemStack>> pairs = Lists.newArrayList();
-                        pairs.add(new Pair<>(EnumWrappers.ItemSlot.MAINHAND, itemStack));
-                        newPacket.getSlotStackPairLists().write(0, pairs);
-
-                        log.warning("SEND ENTITY EQUIPMENT");
-                        manager.sendServerPacket(event.getPlayer(), newPacket);
-                    } catch (Throwable e) {
-                        e.printStackTrace();
-                    }
+                    // ArmorStandのスロットにItemStackを装備させる (リログ後の反映に1tick待つ必要があった)
+                    ItemStack is = itemStack;
+                    runTask(() -> sendEntityEquipment(event.getPlayer(), entityId, Collections.singletonList(
+                            new Pair<>(EnumWrappers.ItemSlot.MAINHAND, is)
+                    )));
                 }
             }
 

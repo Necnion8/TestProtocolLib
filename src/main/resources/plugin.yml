@@ -4,3 +4,6 @@ main: com.gmail.necnionch.myplugin.testprotocollib.bukkit.TestPlugin
 api-version: '1.13'
 depend:
   - ProtocolLib
+
+commands:
+  sendd: {}
