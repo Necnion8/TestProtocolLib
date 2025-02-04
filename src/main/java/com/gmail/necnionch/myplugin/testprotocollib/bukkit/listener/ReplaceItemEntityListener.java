@@ -28,8 +28,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
     private final Logger log;
     private final ProtocolManager manager;
     //
-    // FIXME: パケットはプレイヤー毎に処理されるため、リストで管理している値もプレイヤー単位で処理すべし
-    private final Map<Integer, Integer> itemOfStandIds = Maps.newHashMap();  // Item id : ArmorStand id
+    private final Map<Player, PlayerContext> contexts = Maps.newHashMap();
     private final Set<Object> ignorePacketHandles = Sets.newHashSet();
 
     public ReplaceItemEntityListener(Plugin plugin, ProtocolManager manager) {
@@ -42,35 +41,26 @@ public class ReplaceItemEntityListener extends PacketAdapter {
         getPlugin().getServer().getScheduler().runTask(getPlugin(), task);
     }
 
-    public void sendServerPacket(Player player, PacketContainer packet) {
-        ignorePacketHandles.add(packet.getHandle());  // 送信する ENTITY_METADATA を処理しないように無視マークする
-        log.warning("SEND PACKET : " + packet.getType().name());
+    private void runTask(Runnable task, long delay) {
+        getPlugin().getServer().getScheduler().runTaskLater(getPlugin(), task, delay);
+    }
+
+    private void sendServerPacket(Player player, PacketContainer packet) {
+        ignorePacketHandles.add(packet.getHandle());  // 送信したパケットを自信が再処理しないように無視マークする
         manager.sendServerPacket(player, packet);
     }
 
 
-    public void sendEntityMetadata(Player player, int entityId, List<WrappedDataValue> dataValues) {
-        try {
-            PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_METADATA);
-            newPacket.getIntegers().write(0, entityId);
-            newPacket.getDataValueCollectionModifier().write(0, dataValues);
-            sendServerPacket(player, newPacket);
-
-        } catch (Throwable e) {
-            e.printStackTrace();
+    public void clearAll() {
+        for (PlayerContext context : contexts.values()) {
+            context.clearArmorStands();
         }
+        contexts.clear();
+        ignorePacketHandles.clear();
     }
 
-    public void sendEntityEquipment(Player player, int entityId, List<Pair<EnumWrappers.ItemSlot, ItemStack>> items) {
-        try {
-            PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_EQUIPMENT);
-            newPacket.getIntegers().write(0, entityId);
-            newPacket.getSlotStackPairLists().write(0, items);
-            sendServerPacket(player, newPacket);
-
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
+    public PlayerContext getPlayerContext(Player player) {
+        return contexts.computeIfAbsent(player, PlayerContext::new);
     }
 
 
@@ -78,73 +68,125 @@ public class ReplaceItemEntityListener extends PacketAdapter {
     public void onPacketSending(PacketEvent event) {
         PacketContainer packet = event.getPacket();
 
-        // 無視マークされたパケット
+        // 自信が送信したパケットを再処理するのを防ぐ
         if (ignorePacketHandles.remove(packet.getHandle())) {
-            log.severe("IGNORED PACKET : " + event.getPacketType().name());
             return;
         }
 
+        PlayerContext context = getPlayerContext(event.getPlayer());
+
         if (PacketType.Play.Server.SPAWN_ENTITY.equals(event.getPacketType())) {
-            Integer entityId = packet.getIntegers().read(0);
-            UUID entityUniqueId = packet.getUUIDs().read(0);
-            EntityType entityType = packet.getEntityTypeModifier().read(0);
-            Double x = packet.getDoubles().read(0);
-            Double y = packet.getDoubles().read(1);
-            Double z = packet.getDoubles().read(2);
-            log.warning("eId: " + entityId + ", uuid: " + entityUniqueId + ", eType: " + entityType + ", x: " + x + ", y: " + y + ", z: " + z);
-
-            // Itemエンティティ？
-            if (EntityType.DROPPED_ITEM.equals(entityType)) {
-                // 仮想ArmorStandをスポーン
-                PacketContainer newPacket = packet.deepClone();
-                int newEntityId = (int) (Math.random() * Integer.MAX_VALUE);
-                newPacket.getIntegers().write(0, newEntityId);
-                UUID newEntityUniqueId = UUID.randomUUID();
-                newPacket.getUUIDs().write(0, newEntityUniqueId);
-                newPacket.getEntityTypeModifier().write(0, EntityType.ARMOR_STAND);
-                runTask(() -> sendServerPacket(event.getPlayer(), newPacket));
-
-                itemOfStandIds.put(entityId, newEntityId);  // Itemに基づくArmorStandのエンティティIDをマップする
-
-                // ArmorStandをItemエンティティに乗せる
-                PacketContainer newPacket2 = manager.createPacket(PacketType.Play.Server.MOUNT);
-                newPacket2.getIntegers().write(0, entityId);
-                newPacket2.getIntegerArrays().write(0, new int[] { newEntityId });  // passengersパケットを監視しないと他から乗っ取れる可能性あり
-                runTask(() -> sendServerPacket(event.getPlayer(), newPacket2));
-
-            }
+            context.processOnSpawnEntityPacket(packet);
 
         } else if (PacketType.Play.Server.ENTITY_METADATA.equals(event.getPacketType())) {
-            Integer entityId = packet.getIntegers().read(0);
-            List<WrappedDataValue> dataValues = packet.getDataValueCollectionModifier().read(0);
-            log.warning("eId: " + entityId + ", dataValues size: " + dataValues.size());
-
-            ItemStack itemStack = null;
-            for (WrappedDataValue value : dataValues) {
-                log.warning("- idx: " + value.getIndex() + ", v: " + value.getValue() + ", rawValue: " + value.getRawValue() + ", serializer: " + value.getSerializer());
-
-                // 仮想ArmorStandを持つItemかつ、Itemエンティティへのアイテム設定情報があれば itemStack に取り出しておく
-                if (itemOfStandIds.containsKey(entityId) && value.getIndex() == 8) {  // https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Item
-                    itemStack = (ItemStack) value.getValue();
-                }
-            }
-
-            // 仮想ArmorStandを持つItem？
-            if (itemOfStandIds.containsKey(entityId)) {
-                // Itemエンティティに設定されようとしているItemStackがあるなら
-                if (itemStack != null) {
-                    // ArmorStandのスロットにItemStackを装備させる (リログ後の反映に1tick待つ必要があった)
-                    ItemStack is = itemStack;
-                    runTask(() -> sendEntityEquipment(event.getPlayer(), entityId, Collections.singletonList(
-                            new Pair<>(EnumWrappers.ItemSlot.HEAD, is)
-                    )));
-                }
-            }
+            context.processOnEntityMetadataPacket(packet);
 
         } else if (PacketType.Play.Server.ENTITY_DESTROY.equals(event.getPacketType())) {
+            context.processOnEntityDestroy(packet);
+        }
+    }
+
+
+    public final class PlayerContext {
+
+        private final Player player;
+        private final Map<Integer, Integer> itemOfStandIds = Maps.newHashMap();  // Item entity id -> ArmorStand entity id
+
+        public PlayerContext(Player player) {
+            this.player = player;
+        }
+
+        public void sendServerPacket(PacketContainer packet) {
+            ReplaceItemEntityListener.this.sendServerPacket(player, packet);
+        }
+
+        public void sendEntityMetadata(int entityId, List<WrappedDataValue> dataValues) {
+            try {
+                PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_METADATA);
+                newPacket.getIntegers().write(0, entityId);
+                newPacket.getDataValueCollectionModifier().write(0, dataValues);
+                sendServerPacket(newPacket);
+
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void sendEntityEquipment(int entityId, List<Pair<EnumWrappers.ItemSlot, ItemStack>> items) {
+            try {
+                PacketContainer newPacket = manager.createPacket(PacketType.Play.Server.ENTITY_EQUIPMENT);
+                newPacket.getIntegers().write(0, entityId);
+                newPacket.getSlotStackPairLists().write(0, items);
+                sendServerPacket(newPacket);
+
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void clearArmorStands() {
+            if (itemOfStandIds.isEmpty()) {
+                return;
+            }
+
+            PacketContainer packet = manager.createPacket(PacketType.Play.Server.ENTITY_DESTROY);
+            packet.getIntLists().write(0, Lists.newArrayList(itemOfStandIds.values()));
+            itemOfStandIds.clear();
+            sendServerPacket(packet);
+        }
+
+
+        public void processOnSpawnEntityPacket(PacketContainer packet) {
+            EntityType entityType = packet.getEntityTypeModifier().read(0);
+
+            if (!EntityType.DROPPED_ITEM.equals(entityType)) {
+                return;
+            }
+
+            Integer itemEntityId = packet.getIntegers().read(0);
+
+            PacketContainer newPacket = packet.deepClone();
+            int standEntityId = (int) (Math.random() * Integer.MAX_VALUE);  // これで大丈夫？
+            newPacket.getIntegers().write(0, standEntityId);
+            UUID newEntityUniqueId = UUID.randomUUID();
+            newPacket.getUUIDs().write(0, newEntityUniqueId);
+            newPacket.getEntityTypeModifier().write(0, EntityType.ARMOR_STAND);
+            runTask(() -> sendServerPacket(newPacket));
+
+            itemOfStandIds.put(itemEntityId, standEntityId);  // Itemに基づくArmorStandのエンティティIDをマップする
+
+            // ArmorStandをItemエンティティに乗せる
+            PacketContainer newPacket2 = manager.createPacket(PacketType.Play.Server.MOUNT);
+            newPacket2.getIntegers().write(0, itemEntityId);
+            newPacket2.getIntegerArrays().write(0, new int[] { standEntityId });  // passengersパケットを監視しないと他から乗っ取れる可能性あり
+            runTask(() -> sendServerPacket(newPacket2));
+        }
+
+        public void processOnEntityMetadataPacket(PacketContainer packet) {
+            Integer entityId = packet.getIntegers().read(0);
+
+            if (!itemOfStandIds.containsKey(entityId)) {
+                return;
+            }
+
+            Integer standEntityId = itemOfStandIds.get(entityId);
+
+            for (WrappedDataValue dataValue : packet.getDataValueCollectionModifier().read(0)) {
+                if (dataValue.getIndex() == 8) {  // ItemエンティティのItemStackが更新されるなら  // https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Item
+                    ItemStack itemStack = (ItemStack) dataValue.getValue();
+                    // ArmorStandにアイテムを装備させる
+                    runTask(() -> sendEntityEquipment(standEntityId, Collections.singletonList(
+                            new Pair<>(EnumWrappers.ItemSlot.HEAD, itemStack)
+                    )));
+                    break;
+                }
+            }
+        }
+
+        public void processOnEntityDestroy(PacketContainer packet) {
             List<Integer> entityIds = packet.getIntLists().read(0);
 
-            // Itemエンティティが削除される時に仮想ArmorStandも消滅させる。(マップからも削除)
+            // Itemエンティティが削除される時に仮想ArmorStandのidも加えて消滅させる。(マップからも削除)
             List<Integer> removingEntityIds = Lists.newArrayList();
             for (Integer entityId : entityIds) {
                 if (itemOfStandIds.containsKey(entityId)) {
@@ -152,10 +194,9 @@ public class ReplaceItemEntityListener extends PacketAdapter {
                 }
             }
             removingEntityIds.addAll(entityIds);
-
-//            packet.getIntegerArrays().write(0, removingEntityIds.stream().map(Integer::intValue).toArray(int[]::new));
-            packet.getIntLists().write(0, removingEntityIds);  // TODO: getIntegerArrays() に write する必要あり？
+            packet.getIntLists().write(0, removingEntityIds);
         }
+
     }
 
 }
