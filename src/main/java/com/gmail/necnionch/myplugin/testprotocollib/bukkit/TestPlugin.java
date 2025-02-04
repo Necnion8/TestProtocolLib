@@ -10,13 +10,18 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.geysermc.floodgate.api.FloodgateApi;
+import org.geysermc.geyser.api.GeyserApi;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.StreamSupport;
 
 public final class TestPlugin extends JavaPlugin implements Listener {
     private ItemEntityReplacer replacer;
+    private Function<UUID, Boolean> bedrockCheck;
 
     private static PacketType[] getPreviewPacketTypes() {
         List<PacketType> ignores = Arrays.asList(
@@ -41,6 +46,7 @@ public final class TestPlugin extends JavaPlugin implements Listener {
         replacer = new ItemEntityReplacer(this, manager);
         manager.addPacketListener(replacer);
         getServer().getPluginManager().registerEvents(this, this);
+        hookToFloodgateOrGeyser();
 
         getCommand("sendd").setExecutor((sender, command, label, args) -> {
             Player p = sender instanceof Player ? ((Player) sender) : null;
@@ -58,6 +64,7 @@ public final class TestPlugin extends JavaPlugin implements Listener {
         if (replacer != null) {
             replacer.clearAll();
         }
+        bedrockCheck = null;
     }
 
     @EventHandler
@@ -65,6 +72,32 @@ public final class TestPlugin extends JavaPlugin implements Listener {
         if (replacer != null) {
             replacer.removePlayerContext(event.getPlayer());
         }
+    }
+
+    public void hookToFloodgateOrGeyser() {
+        if (getServer().getPluginManager().isPluginEnabled("Geyser-Spigot")) {
+            try {
+                GeyserApi api = GeyserApi.api();
+                bedrockCheck = api::isBedrockPlayer;
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
+        if (bedrockCheck == null && getServer().getPluginManager().isPluginEnabled("floodgate")) {
+            try {
+                FloodgateApi api = FloodgateApi.getInstance();
+                bedrockCheck = api::isFloodgatePlayer;
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
+        if (bedrockCheck == null) {
+            getLogger().severe("Unable to hook Geyser-Spigot or floodgate");
+        }
+    }
+
+    public boolean isBedrockPlayer(UUID playerId) {
+        return bedrockCheck != null && bedrockCheck.apply(playerId);
     }
 
 }

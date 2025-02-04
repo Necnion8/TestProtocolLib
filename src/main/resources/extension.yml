@@ -1,0 +1,5 @@
+id: testprotocollibextension
+name: TestProtocolLibExtension
+version: '${version}'
+main: com.gmail.necnionch.myplugin.testprotocollib.geyserextension.TestExtension
+api: 2.6.0

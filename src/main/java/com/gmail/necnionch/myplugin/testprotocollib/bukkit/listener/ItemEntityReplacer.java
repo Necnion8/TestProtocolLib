@@ -7,7 +7,9 @@ import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.wrappers.EnumWrappers;
 import com.comphenix.protocol.wrappers.Pair;
+import com.comphenix.protocol.wrappers.Vector3F;
 import com.comphenix.protocol.wrappers.WrappedDataValue;
+import com.gmail.necnionch.myplugin.testprotocollib.bukkit.MyUtil;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -167,6 +169,9 @@ public class ItemEntityReplacer extends PacketAdapter {
             UUID newEntityUniqueId = UUID.randomUUID();
             newPacket.getUUIDs().write(0, newEntityUniqueId);
             newPacket.getEntityTypeModifier().write(0, EntityType.ARMOR_STAND);
+            newPacket.getIntegers().write(1, (int) (2.123 * 8000d));  // hook to geyser extension
+            newPacket.getIntegers().write(2, (int) (2.456 * 8000d));  // hook to geyser extension
+            newPacket.getIntegers().write(3, (int) (2.789 * 8000d));  // hook to geyser extension
             sendServerPacket(newPacket);
 
             itemOfStandIds.put(itemEntityId, standEntityId);  // Itemに基づくArmorStandのエンティティIDをマップする
@@ -192,7 +197,11 @@ public class ItemEntityReplacer extends PacketAdapter {
                     ItemStack itemStack = (ItemStack) dataValue.getValue();
                     // ArmorStandにアイテムを装備させる
                     sendEntityEquipment(standEntityId, Collections.singletonList(
-                            new Pair<>(EnumWrappers.ItemSlot.HEAD, itemStack)
+                            new Pair<>(EnumWrappers.ItemSlot.MAINHAND, itemStack)
+                    ));
+                    // ArmorStandの腕の角度を設定する
+                    sendEntityMetadata(standEntityId, Collections.singletonList(
+                            MyUtil.vec3FtoWrappedDataValue(19, new Vector3F(-90, 0, 0))
                     ));
                     break;
                 }

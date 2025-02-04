@@ -4,6 +4,9 @@ main: com.gmail.necnionch.myplugin.testprotocollib.bukkit.TestPlugin
 api-version: '1.13'
 depend:
   - ProtocolLib
+softdepend:
+  - Geyser-Spigot
+  - floodgate
 
 commands:
   sendd: {}
