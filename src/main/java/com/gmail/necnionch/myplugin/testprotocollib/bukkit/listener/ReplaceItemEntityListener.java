@@ -5,7 +5,9 @@ import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
-import com.comphenix.protocol.wrappers.*;
+import com.comphenix.protocol.wrappers.EnumWrappers;
+import com.comphenix.protocol.wrappers.Pair;
+import com.comphenix.protocol.wrappers.WrappedDataValue;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -23,6 +25,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             PacketType.Play.Server.SPAWN_ENTITY,
             PacketType.Play.Server.ENTITY_METADATA,
             PacketType.Play.Server.ENTITY_DESTROY,
+            PacketType.Play.Server.COLLECT,
     };
     
     private final Logger log;
@@ -53,14 +56,25 @@ public class ReplaceItemEntityListener extends PacketAdapter {
 
     public void clearAll() {
         for (PlayerContext context : contexts.values()) {
-            context.clearArmorStands();
+            context.clear();
         }
         contexts.clear();
         ignorePacketHandles.clear();
     }
 
-    public PlayerContext getPlayerContext(Player player) {
-        return contexts.computeIfAbsent(player, PlayerContext::new);
+    public PlayerContext getPlayerContext(Player player, boolean create) {
+        if (create) {
+            return contexts.computeIfAbsent(player, PlayerContext::new);
+        }
+        return contexts.get(player);
+    }
+
+    public PlayerContext removePlayerContext(Player player) {
+        PlayerContext context = contexts.remove(player);
+        if (context != null) {
+            context.clear();
+        }
+        return context;
     }
 
 
@@ -73,7 +87,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             return;
         }
 
-        PlayerContext context = getPlayerContext(event.getPlayer());
+        PlayerContext context = getPlayerContext(event.getPlayer(), true);
 
         if (PacketType.Play.Server.SPAWN_ENTITY.equals(event.getPacketType())) {
             context.processOnSpawnEntityPacket(packet);
@@ -82,7 +96,11 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             context.processOnEntityMetadataPacket(packet);
 
         } else if (PacketType.Play.Server.ENTITY_DESTROY.equals(event.getPacketType())) {
-            context.processOnEntityDestroy(packet);
+            context.processOnEntityDestroyPacket(packet);
+
+        } else if (PacketType.Play.Server.COLLECT.equals(event.getPacketType())) {
+            context.processOnCollectPacket(packet);
+
         }
     }
 
@@ -124,7 +142,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             }
         }
 
-        public void clearArmorStands() {
+        public void clear() {
             if (itemOfStandIds.isEmpty()) {
                 return;
             }
@@ -168,7 +186,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             if (!itemOfStandIds.containsKey(entityId)) {
                 return;
             }
-
+            // METADATAが設定されたのがItemエンティティなら
             Integer standEntityId = itemOfStandIds.get(entityId);
 
             for (WrappedDataValue dataValue : packet.getDataValueCollectionModifier().read(0)) {
@@ -183,7 +201,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             }
         }
 
-        public void processOnEntityDestroy(PacketContainer packet) {
+        public void processOnEntityDestroyPacket(PacketContainer packet) {
             List<Integer> entityIds = packet.getIntLists().read(0);
 
             // Itemエンティティが削除される時に仮想ArmorStandのidも加えて消滅させる。(マップからも削除)
@@ -195,6 +213,20 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             }
             removingEntityIds.addAll(entityIds);
             packet.getIntLists().write(0, removingEntityIds);
+        }
+
+        public void processOnCollectPacket(PacketContainer packet) {
+            Integer collected = packet.getIntegers().read(0);
+
+            if (!itemOfStandIds.containsKey(collected)) {
+                return;
+            }
+            // Itemエンティティが拾われたなら
+            Integer standEntityId = itemOfStandIds.get(collected);
+
+            PacketContainer newPacket = packet.deepClone();
+            newPacket.getIntegers().write(0, standEntityId);
+            sendServerPacket(newPacket);
         }
 
     }

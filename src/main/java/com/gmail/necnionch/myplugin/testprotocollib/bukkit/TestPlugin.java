@@ -6,6 +6,9 @@ import com.comphenix.protocol.ProtocolManager;
 import com.gmail.necnionch.myplugin.testprotocollib.bukkit.listener.PreviewListener;
 import com.gmail.necnionch.myplugin.testprotocollib.bukkit.listener.ReplaceItemEntityListener;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Arrays;
@@ -13,7 +16,7 @@ import java.util.List;
 import java.util.logging.Logger;
 import java.util.stream.StreamSupport;
 
-public final class TestPlugin extends JavaPlugin {
+public final class TestPlugin extends JavaPlugin implements Listener {
     private final Logger log = getLogger();
     private ReplaceItemEntityListener replacer;
 
@@ -28,8 +31,8 @@ public final class TestPlugin extends JavaPlugin {
                 PacketType.Play.Server.MAP_CHUNK
         );
         return StreamSupport.stream(PacketType.values().spliterator(), false)
-                .filter(t -> !ignores.contains(t))
-                .filter(t -> t.name().contains("ENTITY"))
+                .filter(t -> !ignores.contains(t) && !t.name().equals("CLIENT_TICK_END"))
+//                .filter(t -> t.name().contains("ENTITY"))
                 .toArray(PacketType[]::new);
     }
 
@@ -39,6 +42,7 @@ public final class TestPlugin extends JavaPlugin {
         manager.addPacketListener(new PreviewListener(this, getPreviewPacketTypes()));
         replacer = new ReplaceItemEntityListener(this, manager);
         manager.addPacketListener(replacer);
+        getServer().getPluginManager().registerEvents(this, this);
 
         getCommand("sendd").setExecutor((sender, command, label, args) -> {
             Player p = sender instanceof Player ? ((Player) sender) : null;
@@ -57,4 +61,12 @@ public final class TestPlugin extends JavaPlugin {
             replacer.clearAll();
         }
     }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        if (replacer != null) {
+            replacer.removePlayerContext(event.getPlayer());
+        }
+    }
+
 }
