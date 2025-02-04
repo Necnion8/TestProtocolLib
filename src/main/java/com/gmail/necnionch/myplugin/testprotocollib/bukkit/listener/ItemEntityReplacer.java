@@ -17,9 +17,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
 import java.util.*;
-import java.util.logging.Logger;
 
-public class ReplaceItemEntityListener extends PacketAdapter {
+public class ItemEntityReplacer extends PacketAdapter {
     
     private static final PacketType[] LISTEN_TYPES = new PacketType[] {
             PacketType.Play.Server.SPAWN_ENTITY,
@@ -28,15 +27,13 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             PacketType.Play.Server.COLLECT,
     };
     
-    private final Logger log;
     private final ProtocolManager manager;
     //
     private final Map<Player, PlayerContext> contexts = Maps.newHashMap();
     private final Set<Object> ignorePacketHandles = Sets.newHashSet();
 
-    public ReplaceItemEntityListener(Plugin plugin, ProtocolManager manager) {
+    public ItemEntityReplacer(Plugin plugin, ProtocolManager manager) {
         super(plugin, LISTEN_TYPES);
-        log = plugin.getLogger();
         this.manager = manager;
     }
 
@@ -115,7 +112,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
         }
 
         public void sendServerPacket(PacketContainer packet) {
-            ReplaceItemEntityListener.this.sendServerPacket(player, packet);
+            ItemEntityReplacer.this.sendServerPacket(player, packet);
         }
 
         public void sendEntityMetadata(int entityId, List<WrappedDataValue> dataValues) {
@@ -163,13 +160,14 @@ public class ReplaceItemEntityListener extends PacketAdapter {
 
             Integer itemEntityId = packet.getIntegers().read(0);
 
+            // ArmorStandをスポーンさせる
             PacketContainer newPacket = packet.deepClone();
             int standEntityId = (int) (Math.random() * Integer.MAX_VALUE);  // これで大丈夫？
             newPacket.getIntegers().write(0, standEntityId);
             UUID newEntityUniqueId = UUID.randomUUID();
             newPacket.getUUIDs().write(0, newEntityUniqueId);
             newPacket.getEntityTypeModifier().write(0, EntityType.ARMOR_STAND);
-            runTask(() -> sendServerPacket(newPacket));
+            sendServerPacket(newPacket);
 
             itemOfStandIds.put(itemEntityId, standEntityId);  // Itemに基づくArmorStandのエンティティIDをマップする
 
@@ -177,7 +175,7 @@ public class ReplaceItemEntityListener extends PacketAdapter {
             PacketContainer newPacket2 = manager.createPacket(PacketType.Play.Server.MOUNT);
             newPacket2.getIntegers().write(0, itemEntityId);
             newPacket2.getIntegerArrays().write(0, new int[] { standEntityId });  // passengersパケットを監視しないと他から乗っ取れる可能性あり
-            runTask(() -> sendServerPacket(newPacket2));
+            runTask(() -> sendServerPacket(newPacket2));  // Itemエンティティがスポーンした後に実行
         }
 
         public void processOnEntityMetadataPacket(PacketContainer packet) {
@@ -193,9 +191,9 @@ public class ReplaceItemEntityListener extends PacketAdapter {
                 if (dataValue.getIndex() == 8) {  // ItemエンティティのItemStackが更新されるなら  // https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Item
                     ItemStack itemStack = (ItemStack) dataValue.getValue();
                     // ArmorStandにアイテムを装備させる
-                    runTask(() -> sendEntityEquipment(standEntityId, Collections.singletonList(
+                    sendEntityEquipment(standEntityId, Collections.singletonList(
                             new Pair<>(EnumWrappers.ItemSlot.HEAD, itemStack)
-                    )));
+                    ));
                     break;
                 }
             }
