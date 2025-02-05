@@ -34,11 +34,9 @@ repositories {
 dependencies {
     compileOnly "org.spigotmc:spigot-api:1.13.2-R0.1-SNAPSHOT"
     compileOnly 'com.comphenix.protocol:ProtocolLib:5.1.0'
+    implementation files("./libs/Geyser-Spigot.jar")
     compileOnly "org.geysermc.geyser:api:2.6.0-SNAPSHOT"
-//    compileOnly "org.geysermc.geyser:core:2.6.0-SNAPSHOT"
-//    compileOnly "org.geysermc.mcprotocollib:protocol:1.21.4-SNAPSHOT"
     compileOnly "org.geysermc.floodgate:api:2.2.3-SNAPSHOT"
-    implementation files("P:\\tmp_guildsystem\\plugins\\Geyser-Spigot.jar")
 }
 
 def targetJavaVersion = 17
