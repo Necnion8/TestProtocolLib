@@ -7,9 +7,8 @@ import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.wrappers.EnumWrappers;
 import com.comphenix.protocol.wrappers.Pair;
-import com.comphenix.protocol.wrappers.Vector3F;
 import com.comphenix.protocol.wrappers.WrappedDataValue;
-import com.gmail.necnionch.myplugin.testprotocollib.bukkit.MyUtil;
+import com.comphenix.protocol.wrappers.WrappedDataWatcher;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -181,6 +180,12 @@ public class ItemEntityReplacer extends PacketAdapter {
             newPacket2.getIntegers().write(0, itemEntityId);
             newPacket2.getIntegerArrays().write(0, new int[] { standEntityId });  // passengersパケットを監視しないと他から乗っ取れる可能性あり
             runTask(() -> sendServerPacket(newPacket2));  // Itemエンティティがスポーンした後に実行
+
+            // ArmorStandをSmallにする
+            runTask(() -> sendEntityMetadata(standEntityId, Lists.newArrayList(
+                    new WrappedDataValue(0, WrappedDataWatcher.Registry.get(Byte.class), (byte) 0x20),  // 0x20 = invisible; https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Entity
+                    new WrappedDataValue(15, WrappedDataWatcher.Registry.get(Byte.class), (byte) (0x01 | 0x10))  // small, marker
+            )));
         }
 
         public void processOnEntityMetadataPacket(PacketContainer packet) {
@@ -199,10 +204,10 @@ public class ItemEntityReplacer extends PacketAdapter {
                     sendEntityEquipment(standEntityId, Collections.singletonList(
                             new Pair<>(EnumWrappers.ItemSlot.MAINHAND, itemStack)
                     ));
-                    // ArmorStandの腕の角度を設定する
-                    sendEntityMetadata(standEntityId, Collections.singletonList(
-                            MyUtil.vec3FtoWrappedDataValue(19, new Vector3F(-90, 0, 0))
-                    ));
+//                    // ArmorStandの腕の角度を設定する
+//                    sendEntityMetadata(standEntityId, Collections.singletonList(
+//                            MyUtil.vec3FtoWrappedDataValue(19, new Vector3F(-90, 0, 0))
+//                    ));
                     break;
                 }
             }
